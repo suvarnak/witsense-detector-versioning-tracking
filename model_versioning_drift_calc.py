@@ -1,36 +1,30 @@
 # YOLOv8 Model Versioning and Drift Detection Project
 # Complete MLOps pipeline with model tracking and drift detection
 
-import os
-import shutil
-import yaml
 import json
 import numpy as np
 import pandas as pd
 import cv2
 import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore')
 
 # MLOps and Monitoring imports
 import mlflow
-import mlflow.pytorch
 from evidently import Report
 from evidently.metrics import DriftedColumnsCount, ValueDrift
 
 # YOLOv8 imports
 from ultralytics import YOLO
-import torch
+import yaml
 
 # Set up directories
 PROJECT_ROOT = Path("yolov8_drift_project")
 DATA_DIR = PROJECT_ROOT / "dataset"
 MODELS_DIR = PROJECT_ROOT / "models"
 REPORTS_DIR = PROJECT_ROOT / "reports"
-CONFIGS_DIR = PROJECT_ROOT / "configs"
 
 class DatasetGenerator:
     """Generate synthetic datasets with controlled variations to simulate drift"""
@@ -321,8 +315,7 @@ def setup_project_structure():
         PROJECT_ROOT,
         DATA_DIR,
         MODELS_DIR,
-        REPORTS_DIR,
-        CONFIGS_DIR
+        REPORTS_DIR
     ]
     
     for directory in directories:
@@ -390,43 +383,63 @@ def main():
     print("1. Setting up project structure...")
     setup_project_structure()
     
-    # Step 2: Generate datasets
-    print("\n2. Generating synthetic datasets...")
-    dataset_generator = DatasetGenerator(DATA_DIR)
+    # Step 2: Choose dataset type
+    from real_datasets import get_dataset_choice
     
-    dataset_configs = {}
-    for version in ['v1', 'v2', 'v3']:
-        config_path = dataset_generator.generate_dataset(version, num_train=80, num_val=20)
-        dataset_configs[version] = config_path
+    print("\n2. Choose dataset type:")
+    real_dataset_config = get_dataset_choice()
+    
+    if real_dataset_config:
+        # Use real dataset
+        print(f"Using real dataset: {real_dataset_config}")
+        dataset_configs = {'real': real_dataset_config}
+        versions = ['real']
+    else:
+        # Use synthetic datasets
+        print("\n2. Generating synthetic datasets...")
+        dataset_generator = DatasetGenerator(DATA_DIR)
         
-        # Visualize samples
-        print(f"Visualizing samples from {version}...")
-        visualize_dataset_samples(version)
+        dataset_configs = {}
+        versions = ['v1', 'v2', 'v3']
+        for version in versions:
+            config_path = dataset_generator.generate_dataset(version, num_train=80, num_val=20)
+            dataset_configs[version] = config_path
+            
+            # Visualize samples
+            print(f"Visualizing samples from {version}...")
+            visualize_dataset_samples(version)
     
     # Step 3: Train models
     print("\n3. Training YOLOv8 models...")
     trainer = YOLOv8Trainer()
     
     model_infos = []
-    for version, config_path in dataset_configs.items():
+    for version in versions:
+        config_path = dataset_configs[version]
         model_info = trainer.train_model(config_path, version)
         model_infos.append(model_info)
     
-    # Step 4: Analyze drift
-    print("\n4. Analyzing dataset drift...")
-    drift_analyzer = DriftAnalyzer()
-    
-    # Compare v1 vs v2
-    drift_analyzer.analyze_dataset_drift('v1', 'v2')
-    
-    # Compare v1 vs v3
-    drift_analyzer.analyze_dataset_drift('v1', 'v3')
-    
-    # Compare v2 vs v3
-    drift_analyzer.analyze_dataset_drift('v2', 'v3')
+    # Step 4: Analyze drift (only for synthetic datasets)
+    if not real_dataset_config:
+        print("\n4. Analyzing dataset drift...")
+        drift_analyzer = DriftAnalyzer()
+        
+        # Compare v1 vs v2
+        drift_analyzer.analyze_dataset_drift('v1', 'v2')
+        
+        # Compare v1 vs v3
+        drift_analyzer.analyze_dataset_drift('v1', 'v3')
+        
+        # Compare v2 vs v3
+        drift_analyzer.analyze_dataset_drift('v2', 'v3')
+    else:
+        print("\n4. Skipping drift analysis for real dataset (single version)")
     
     # Step 5: Compare model performance
     print("\n5. Comparing model performance...")
+    if real_dataset_config or 'drift_analyzer' not in locals():
+        drift_analyzer = DriftAnalyzer()
+    
     comparison_df = drift_analyzer.compare_model_performance(model_infos)
     print("\nModel Performance Comparison:")
     print(comparison_df.to_string(index=False))
@@ -440,17 +453,18 @@ def main():
             'mlflow_experiment': "yolov8_drift_experiment"
         },
         'datasets': {version: str(path) for version, path in dataset_configs.items()},
+        'dataset_type': 'real' if real_dataset_config else 'synthetic',
         'models': [{
             'version': info['version'],
             'run_id': info['run_id'],
             'model_path': str(info['model_path'])
         } for info in model_infos],
         'reports_generated': [
-            'drift_report_v1_vs_v2.html',
-            'drift_report_v1_vs_v3.html', 
-            'drift_report_v2_vs_v3.html',
+            'drift_report_v1_vs_v2.json' if not real_dataset_config else 'No drift reports (single dataset)',
+            'drift_report_v1_vs_v3.json' if not real_dataset_config else '',
+            'drift_report_v2_vs_v3.json' if not real_dataset_config else '',
             'model_comparison.csv'
-        ]
+        ] if not real_dataset_config else ['model_comparison.csv']
     }
     
     summary_path = PROJECT_ROOT / "project_summary.json"
