@@ -106,7 +106,7 @@ witsense-detector-versioning-tracking/
 
 View experiment results:
 ```bash
-mlflow ui --backend-store-uri ./mlruns
+uv run mlflow ui --backend-store-uri ./mlruns
 ```
 
 Access at: http://localhost:5000
