@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "witsense-detector-versioning-tracking"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ultralytics",
+    "torch",
+    "torchvision",
+    "opencv-python",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "Pillow",
+    "mlflow",
+    "pyyaml",
+    "evidently>=0.7.12",
+]
+
+[tool.setuptools]
+py-modules = ["model_versioning_drift_calc"]
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.package-dir]
+"" = "."
